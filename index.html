@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cafecito ☕</title>
+  <style>
+    :root{
+      --bg:#111; --fg:#fff; --acc:#ff4b4b; --acc-hover:#d63c3c;
+      --glass: rgba(255,255,255,.08);
+      --glass-b: rgba(255,255,255,.18);
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; padding:0; height:100vh;
+      display:flex; justify-content:center; align-items:center;
+      background:var(--bg); color:var(--fg);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    }
+    .container{ position:relative; width:100%; max-width:680px; padding:16px; }
+    .container img{ width:100%; height:auto; display:block; border-radius:12px; opacity:.35; }
+
+    /* Card centrada encima de la imagen, imitando tu mini-player */
+    .card{
+      position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+      width:min(92%,560px);
+      background:rgba(0,0,0,.6); backdrop-filter: blur(6px);
+      border:1px solid var(--glass-b); border-radius:14px; padding:18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .title{ font-size:20px; font-weight:700; margin:0 0 12px; }
+    .subtitle{ font-size:14px; opacity:.9; margin:0 0 14px; }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; }
+    .row > * { flex:1 1 140px; }
+
+    .btn{
+      background:var(--acc); color:#fff; border:none; cursor:pointer;
+      border-radius:10px; padding:12px 16px; font-size:16px; line-height:1;
+      display:inline-flex; align-items:center; gap:8px; user-select:none;
+      transition: transform .15s ease, background .2s ease, opacity .2s ease;
+    }
+    .btn:hover{ background:var(--acc-hover); transform:translateY(-1px); }
+    .btn.secondary{ background:#2a2a2a; }
+    .btn.secondary:hover{ background:#383838; }
+    .btn[disabled]{ opacity:.6; cursor:not-allowed; transform:none; }
+
+    label{ font-size:13px; opacity:.9; display:block; margin:8px 0 6px; }
+    input{
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--glass-b);
+      background:rgba(255,255,255,.06); color:#fff; outline:none;
+    }
+    input::placeholder{ color:#bbb; }
+
+    .steps > section{ display:none; }
+    .steps > section.active{ display:block; }
+
+    .final{
+      text-align:center; padding:30px 10px;
+      font-size:22px; font-weight:700;
+    }
+
+    /* Accesibilidad */
+    .btn:focus-visible, input:focus-visible{
+      outline: 3px solid #fff; outline-offset: 2px;
+    }
+
+    @media (max-width:480px){
+      .btn{ font-size:15px; padding:11px 14px; }
+      .title{ font-size:18px; }
+    }
+
+    /* iframe oculto para el POST del webhook (sin redirigir) */
+    iframe#sink{ display:none; width:0; height:0; border:0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Opcional: imagen de fondo como en tu snippet -->
+    <img src="gaby3.jpg" alt="Imagen de fondo">
+
+    <div class="card" role="dialog" aria-label="Invitación a cafecito">
+      <div class="steps" id="steps">
+
+        <!-- Paso 1 -->
+        <section id="step1" class="active">
+          <p class="title">¿Quieres tomarte un cafecito?</p>
+          <div class="row" style="margin-top:12px;">
+            <button class="btn" id="btnSi" type="button">Sí ☕️</button>
+            <button class="btn secondary" id="btnTalvez" type="button">Tal vez 🤔</button>
+          </div>
+        </section>
+
+        <!-- Paso 2 -->
+        <section id="step2">
+          <p class="title">Perfecto, escoge tú el lugar y el día</p>
+          <p class="subtitle">Completa los datos y envíalos. 👇</p>
+
+          <div class="row">
+            <div style="flex:1 1 100%;">
+              <label for="lugar">Lugar</label>
+              <input id="lugar" name="lugar" type="text" placeholder="Ej. La Esquina Café" required>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="dia">Día</label>
+              <input id="dia" name="dia" type="date" required>
+            </div>
+            <div>
+              <label for="hora">Hora</label>
+              <input id="hora" name="hora" type="time" required>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:14px;">
+            <button class="btn" id="btnEnviar" type="button">Enviar</button>
+            <button class="btn secondary" id="btnVolver" type="button">Volver</button>
+          </div>
+        </section>
+
+        <!-- Paso Final -->
+        <section id="stepFinal">
+          <div class="final">Nos vemos pronto ✨</div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- iframe “sumidero” para que el form se envíe sin salir de la página -->
+  <iframe id="sink" name="sink"></iframe>
+
+  <!-- form para el webhook (se rellena y envía por JS) -->
+  <form id="webhookForm" method="POST" target="sink" enctype="multipart/form-data">
+    <!-- Importante: el action se pone por JS para no dejar la URL a simple vista -->
+    <input type="hidden" name="payload_json" id="payload_json" />
+  </form>
+
+  <script>
+    // ====== PON AQUÍ TU WEBHOOK DE DISCORD (mejor uno NUEVO) ======
+    const WEBHOOK_URL = "https://discord.com/api/webhooks/1404915321089036328/N2bZPacu9qGL2TCY9YEI4ASRMtrIUl6rfaGEWVp2ZJmPMVByTbNBWdGQ7kdFLyZhjmmt";
+    // ==============================================================
+
+    // Referencias UI
+    const steps      = document.getElementById('steps');
+    const step1      = document.getElementById('step1');
+    const step2      = document.getElementById('step2');
+    const stepFinal  = document.getElementById('stepFinal');
+    const btnSi      = document.getElementById('btnSi');
+    const btnTalvez  = document.getElementById('btnTalvez');
+    const btnEnviar  = document.getElementById('btnEnviar');
+    const btnVolver  = document.getElementById('btnVolver');
+    const inputLugar = document.getElementById('lugar');
+    const inputDia   = document.getElementById('dia');
+    const inputHora  = document.getElementById('hora');
+
+    // Form/iframe para el envío silencioso
+    const form       = document.getElementById('webhookForm');
+    const payloadI   = document.getElementById('payload_json');
+
+    // Estado
+    let respuestaInicial = null;
+
+    // Throttle local para evitar spam (30s)
+    const LS_KEY = 'cafecito_lastNotifyTs';
+    const THROTTLE_MS = 30_000;
+    function canNotifyNow(){
+      const last = Number(localStorage.getItem(LS_KEY) || 0);
+      const now  = Date.now();
+      if (now - last < THROTTLE_MS) return false;
+      localStorage.setItem(LS_KEY, String(now));
+      return true;
+    }
+
+    function go(to){
+      // Cambia sección activa
+      [step1, step2, stepFinal].forEach(s => s.classList.remove('active'));
+      to.classList.add('active');
+    }
+
+    // Paso 1 -> Paso 2 (guardando la respuesta)
+    btnSi.addEventListener('click', () => { respuestaInicial = 'Sí'; go(step2); });
+    btnTalvez.addEventListener('click', () => { respuestaInicial = 'Tal vez'; go(step2); });
+
+    // Volver a Paso 1
+    btnVolver.addEventListener('click', () => { go(step1); });
+
+    // Enviar a Discord y mostrar final
+    btnEnviar.addEventListener('click', () => {
+      // Validación mínima
+      if (!respuestaInicial){
+        alert('Primero responde si quieres cafecito 🙂');
+        return go(step1);
+      }
+      if (!inputLugar.value.trim() || !inputDia.value || !inputHora.value){
+        alert('Completa lugar, día y hora.');
+        return;
+      }
+
+      // Evita doble clic
+      if (btnEnviar.disabled) return;
+      btnEnviar.disabled = true;
+
+      // Construir mensaje
+      const unix = Math.floor(Date.now()/1000);
+      const content =
+        `☕ **Nueva invitación de cafecito**\n` +
+        `- Respuesta: \`${respuestaInicial}\`\n` +
+        `- Lugar: \`${sanitize(inputLugar.value)}\`\n` +
+        `- Día: \`${inputDia.value}\`\n` +
+        `- Hora: \`${inputHora.value}\`\n` +
+        `- Enviado: <t:${unix}:F>`;
+
+      const payload = {
+        username: "Cafecito Bot",
+        allowed_mentions: { parse: [] },
+        content
+      };
+
+      if (!WEBHOOK_URL || WEBHOOK_URL.startsWith('PON_AQUI')){
+        alert('Falta configurar el WEBHOOK_URL.');
+        btnEnviar.disabled = false;
+        return;
+      }
+
+      if (!canNotifyNow()){
+        // Aún así mostramos la pantalla final para UX
+        go(stepFinal);
+        resetLater();
+        return;
+      }
+
+      // Setear action último momento y enviar silenciosamente
+      form.setAttribute('action', WEBHOOK_URL);
+      payloadI.value = JSON.stringify(payload);
+      form.submit();
+
+      // Mostrar final inmediatamente
+      go(stepFinal);
+      resetLater();
+    });
+
+    function resetLater(){
+      // Rehabilita botón y limpia inputs después de un pequeño delay
+      setTimeout(() => {
+        btnEnviar.disabled = false;
+        inputLugar.value = ''; inputDia.value = ''; inputHora.value = '';
+        respuestaInicial = null;
+      }, 300);
+    }
+
+    function sanitize(str=''){
+      // Sin saltos de línea ni caracteres de control
+      return String(str).slice(0, 140).replace(/[\r\n\t]/g,' ');
+    }
+  </script>
+</body>
+</html>
